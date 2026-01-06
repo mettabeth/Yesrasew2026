@@ -1,0 +1,7 @@
+{
+  "name": "Yesrasew - Comprehensive Marketplace",
+  "description": "Ethiopia's leading digital marketplace for Jobs, Tenders, Properties, and Vehicles.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
