@@ -6,6 +6,7 @@ import { useTranslation } from './LanguageContext';
 import { Language } from '../types';
 import Logo from './Logo';
 import AIAssistant from './AIAssistant';
+import { translations } from '../translations';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -21,12 +22,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     setLanguage(language === Language.EN ? Language.AM : Language.EN);
   };
 
-  const navLinks = [
-    { name: t('home'), path: '/' },
-    { name: t('jobs'), path: '/jobs' },
-    { name: t('tenders'), path: '/tenders' },
-    { name: t('property'), path: '/property' },
-    { name: t('vehicles'), path: '/vehicles' },
+  // Fix: Use translation keys instead of pre-translated strings to avoid redundant t() calls and type errors
+  const navLinks: { nameKey: keyof typeof translations.en; path: string }[] = [
+    { nameKey: 'home', path: '/' },
+    { nameKey: 'jobs', path: '/jobs' },
+    { nameKey: 'tenders', path: '/tenders' },
+    { nameKey: 'property', path: '/property' },
+    { nameKey: 'vehicles', path: '/vehicles' },
   ];
 
   return (
@@ -50,7 +52,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                     location.pathname === link.path ? 'text-accent border-b border-accent pb-0.5' : 'text-gray-300'
                   }`}
                 >
-                  {link.name}
+                  {t(link.nameKey)}
                 </Link>
               ))}
             </nav>
@@ -108,7 +110,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 onClick={() => setIsMenuOpen(false)}
                 className="block text-sm font-bold py-1.5 border-b border-white/5 text-gray-200"
               >
-                {t(link.name.toLowerCase())}
+                {t(link.nameKey)}
               </Link>
             ))}
           </div>
