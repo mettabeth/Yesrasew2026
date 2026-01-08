@@ -2,6 +2,7 @@
 import React, { useState, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ReactQuill from 'react-quill';
+import { GoogleGenAI } from "@google/genai";
 import { 
   Camera, 
   X, 
@@ -19,16 +20,20 @@ import {
   AlertCircle,
   Loader2,
   Trash2,
-  Plus
+  Plus,
+  Sparkles,
+  Wand2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { ListingCategory } from '../types';
 import { CATEGORIES, FILTER_OPTIONS } from '../constants';
 
 interface ImageFile {
   id: string;
-  file: File;
+  file?: File;
   preview: string;
   progress: number;
+  isAI?: boolean;
 }
 
 const PostAdPage: React.FC = () => {
@@ -42,6 +47,11 @@ const PostAdPage: React.FC = () => {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   
+  // AI Generation States
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiTab, setAiTab] = useState<'upload' | 'ai'>('upload');
+
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -66,7 +76,6 @@ const PostAdPage: React.FC = () => {
 
     setImages(prev => [...prev, ...newImages]);
 
-    // Simulate upload progress for each image
     newImages.forEach(img => {
       let prog = 0;
       const interval = setInterval(() => {
@@ -82,10 +91,51 @@ const PostAdPage: React.FC = () => {
     });
   };
 
+  const handleGenerateAIImage = async () => {
+    if (!aiPrompt.trim() || isGenerating || images.length >= 8) return;
+
+    setIsGenerating(true);
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [
+            { text: `Create a professional, high-quality marketplace listing photo for: ${aiPrompt}. The image should look realistic, clean, and commercial.` }
+          ]
+        },
+      });
+
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData) {
+          const base64Data = part.inlineData.data;
+          const imageUrl = `data:image/png;base64,${base64Data}`;
+          
+          const newAiImage: ImageFile = {
+            id: Math.random().toString(36).substr(2, 9),
+            preview: imageUrl,
+            progress: 100,
+            isAI: true
+          };
+
+          setImages(prev => [...prev, newAiImage]);
+          setAiPrompt('');
+          setAiTab('upload'); // Switch back to see the result
+          break;
+        }
+      }
+    } catch (error) {
+      console.error("AI Generation Error:", error);
+      alert("Failed to generate image. Please try a different description.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   const removeImage = (id: string) => {
     setImages(prev => {
       const img = prev.find(i => i.id === id);
-      if (img) URL.revokeObjectURL(img.preview);
+      if (img && img.file) URL.revokeObjectURL(img.preview);
       return prev.filter(i => i.id !== id);
     });
   };
@@ -120,7 +170,6 @@ const PostAdPage: React.FC = () => {
     }
     
     setIsSubmitting(true);
-    // Simulate API call
     setTimeout(() => {
       setIsSubmitting(false);
       setIsSuccess(true);
@@ -139,7 +188,6 @@ const PostAdPage: React.FC = () => {
 
   const isFormValid = () => {
     if (step === 1) return !!category;
-    // For rich text, check if there's actual content (not just empty tags)
     const hasDescription = formData.description.replace(/<(.|\n)*?>/g, '').trim().length > 0;
     if (step === 2) return formData.title && hasDescription && formData.location;
     return true;
@@ -432,69 +480,153 @@ const PostAdPage: React.FC = () => {
             </div>
           )}
 
-          {/* Step 3: Media Upload */}
+          {/* Step 3: Media Upload & AI Generation */}
           {step === 3 && (
             <div className="bg-white rounded-[3rem] shadow-xl shadow-blue-900/5 border border-gray-100 p-8 lg:p-12 animate-in slide-in-from-right-8 duration-500">
-              <div className="flex items-center gap-4 mb-10 pb-6 border-b border-gray-50">
-                <div className="p-3 bg-accent/10 text-accent rounded-2xl">
-                  <Camera className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-2xl font-black text-primary leading-none uppercase tracking-tight">Visual Content</h2>
-                  <p className="text-xs text-gray-400 font-bold mt-1 uppercase tracking-widest">Final Step</p>
-                </div>
-              </div>
-
-              <div 
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`relative border-4 border-dashed rounded-[3rem] p-12 lg:p-20 transition-all text-center mb-12 ${
-                  isDragging ? 'border-accent bg-orange-50/50 scale-[0.98]' : 'border-gray-100 hover:border-gray-200 bg-gray-50/30'
-                }`}
-              >
-                <input 
-                  type="file" 
-                  ref={fileInputRef}
-                  className="hidden" 
-                  multiple 
-                  accept="image/*"
-                  onChange={(e) => handleImageUpload(e.target.files)}
-                />
-                
-                <div className="flex flex-col items-center">
-                  <div className="w-20 h-20 bg-accent text-primary rounded-[1.5rem] flex items-center justify-center mb-6 shadow-xl shadow-accent/20">
-                    <Upload className="w-10 h-10" />
+              <div className="flex items-center justify-between mb-10 pb-6 border-b border-gray-50">
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-accent/10 text-accent rounded-2xl">
+                    <Camera className="w-5 h-5" />
                   </div>
-                  <h3 className="text-xl font-black text-primary mb-2">Drag & Drop Photos Here</h3>
-                  <p className="text-sm text-gray-500 font-medium mb-8">High quality images sell 5x faster. Add up to 8 photos.</p>
+                  <div>
+                    <h2 className="text-2xl font-black text-primary leading-none uppercase tracking-tight">Visual Content</h2>
+                    <p className="text-xs text-gray-400 font-bold mt-1 uppercase tracking-widest">Final Step</p>
+                  </div>
+                </div>
+
+                <div className="flex bg-gray-100 p-1 rounded-xl">
                   <button 
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="bg-primary text-white px-8 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-105 transition-all shadow-lg shadow-primary/10"
+                    onClick={() => setAiTab('upload')}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${aiTab === 'upload' ? 'bg-white text-primary shadow-sm' : 'text-gray-400 hover:text-primary'}`}
                   >
-                    Browse Files
+                    Upload
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setAiTab('ai')}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${aiTab === 'ai' ? 'bg-accent text-primary shadow-sm' : 'text-gray-400 hover:text-primary'}`}
+                  >
+                    <Wand2 className="w-3 h-3" />
+                    AI Magic
                   </button>
                 </div>
-
-                <div className="absolute top-6 right-8 text-[10px] font-black uppercase tracking-widest text-gray-300">
-                  {images.length} / 8 Images
-                </div>
               </div>
+
+              {aiTab === 'upload' ? (
+                <div 
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`relative border-4 border-dashed rounded-[3rem] p-12 lg:p-20 transition-all text-center mb-12 ${
+                    isDragging ? 'border-accent bg-orange-50/50 scale-[0.98]' : 'border-gray-100 hover:border-gray-200 bg-gray-50/30'
+                  }`}
+                >
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    className="hidden" 
+                    multiple 
+                    accept="image/*"
+                    onChange={(e) => handleImageUpload(e.target.files)}
+                  />
+                  
+                  <div className="flex flex-col items-center">
+                    <div className="w-20 h-20 bg-accent text-primary rounded-[1.5rem] flex items-center justify-center mb-6 shadow-xl shadow-accent/20">
+                      <Upload className="w-10 h-10" />
+                    </div>
+                    <h3 className="text-xl font-black text-primary mb-2">Drag & Drop Photos Here</h3>
+                    <p className="text-sm text-gray-500 font-medium mb-8">High quality images sell 5x faster. Add up to 8 photos.</p>
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="bg-primary text-white px-8 py-3.5 rounded-xl font-black uppercase tracking-widest text-[10px] hover:scale-105 transition-all shadow-lg shadow-primary/10"
+                    >
+                      Browse Files
+                    </button>
+                  </div>
+
+                  <div className="absolute top-6 right-8 text-[10px] font-black uppercase tracking-widest text-gray-300">
+                    {images.length} / 8 Images
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-primary rounded-[3rem] p-10 lg:p-14 text-white relative overflow-hidden mb-12">
+                   <div className="absolute top-0 right-0 w-64 h-64 bg-accent/5 rounded-full blur-[80px]"></div>
+                   <div className="relative z-10">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="bg-accent/20 p-3 rounded-2xl border border-accent/20">
+                          <Sparkles className="w-6 h-6 text-accent" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-black uppercase tracking-tight">AI Image Studio</h3>
+                          <p className="text-[10px] text-accent font-black uppercase tracking-[0.2em] opacity-80">Generate Professional Visuals</p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-6">
+                         <div>
+                            <label className="block text-[10px] font-black uppercase tracking-widest text-gray-400 mb-3">Describe the photo you want</label>
+                            <textarea 
+                              className="w-full bg-white/5 border border-white/10 rounded-2xl p-5 text-sm font-medium focus:ring-2 focus:ring-accent focus:border-accent outline-none min-h-[120px] transition-all"
+                              placeholder="e.g. A realistic modern 2-bedroom apartment living room with sunlight streaming through large windows, minimalist design, hardwood floors..."
+                              value={aiPrompt}
+                              onChange={(e) => setAiPrompt(e.target.value)}
+                            />
+                         </div>
+                         <button 
+                          type="button"
+                          disabled={!aiPrompt.trim() || isGenerating || images.length >= 8}
+                          onClick={handleGenerateAIImage}
+                          className="w-full bg-accent text-primary py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs shadow-xl shadow-accent/10 flex items-center justify-center gap-3 hover:brightness-110 active:scale-95 transition-all disabled:opacity-30"
+                         >
+                           {isGenerating ? (
+                             <>
+                               <Loader2 className="w-5 h-5 animate-spin" />
+                               Crafting Your Image...
+                             </>
+                           ) : (
+                             <>
+                               <Wand2 className="w-5 h-5" />
+                               Generate Magic Image
+                             </>
+                           )}
+                         </button>
+                         {images.length >= 8 && (
+                           <p className="text-center text-[10px] text-red-400 font-black uppercase tracking-widest">Image limit reached (8/8)</p>
+                         )}
+                      </div>
+                   </div>
+                </div>
+              )}
 
               {/* Preview Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
                 {images.map((img) => (
-                  <div key={img.id} className="relative aspect-square rounded-[2rem] overflow-hidden group border border-gray-100 shadow-sm bg-gray-50">
+                  <div key={img.id} className={`relative aspect-square rounded-[2rem] overflow-hidden group border-2 transition-all shadow-sm bg-gray-50 ${img.isAI ? 'border-accent/40 ring-4 ring-accent/5' : 'border-gray-100'}`}>
                     <img src={img.preview} alt="Upload preview" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                     
-                    {/* Progress Overlay */}
+                    {/* Visual Progress Bar Overlay */}
                     {img.progress < 100 && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <div className="w-12 h-12 relative flex items-center justify-center">
-                           <Loader2 className="w-8 h-8 text-white animate-spin absolute" />
-                           <span className="text-[10px] text-white font-black relative">{img.progress}%</span>
+                      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center p-4">
+                        <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden mb-2">
+                          <div 
+                            className="h-full bg-accent transition-all duration-300 ease-out shadow-[0_0_8px_rgba(212,175,55,0.6)]"
+                            style={{ width: `${img.progress}%` }}
+                          ></div>
                         </div>
+                        <span className="text-[10px] text-white font-black uppercase tracking-widest flex items-center gap-1.5">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          {img.progress}%
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Enhanced AI Badge */}
+                    {img.isAI && (
+                      <div className="absolute top-3 left-3 bg-primary text-accent px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-widest flex items-center gap-1.5 shadow-2xl border border-accent/20 animate-in fade-in zoom-in duration-500 z-10">
+                        <Sparkles className="w-3 h-3 animate-pulse" />
+                        <span>AI Generated</span>
                       </div>
                     )}
 
@@ -502,21 +634,23 @@ const PostAdPage: React.FC = () => {
                     <button 
                       type="button"
                       onClick={() => removeImage(img.id)}
-                      className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 shadow-lg"
+                      className="absolute top-3 right-3 p-2 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600 shadow-lg z-20"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                    <div className="absolute bottom-3 left-3 text-[8px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">
-                      {Math.round(img.file.size / 1024)} KB
-                    </div>
+                    {img.file && (
+                      <div className="absolute bottom-3 left-3 text-[8px] font-black text-white uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-all">
+                        {Math.round(img.file.size / 1024)} KB
+                      </div>
+                    )}
                   </div>
                 ))}
                 
                 {images.length > 0 && images.length < 8 && (
                    <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="aspect-square rounded-[2rem] border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 text-gray-300 hover:border-accent hover:text-accent hover:bg-orange-50 transition-all group"
+                    onClick={() => aiTab === 'upload' ? fileInputRef.current?.click() : null}
+                    className={`aspect-square rounded-[2rem] border-2 border-dashed border-gray-200 flex flex-col items-center justify-center gap-2 text-gray-300 transition-all group ${aiTab === 'ai' ? 'cursor-default opacity-50' : 'hover:border-accent hover:text-accent hover:bg-orange-50'}`}
                    >
                      <Plus className="w-8 h-8" />
                      <span className="text-[10px] font-black uppercase tracking-widest">Add More</span>
@@ -542,7 +676,7 @@ const PostAdPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting || images.length === 0}
-                  className="bg-accent text-primary px-16 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-sm shadow-2xl shadow-accent/20 hover:scale-105 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-3"
+                  className="bg-primary text-accent px-16 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-sm shadow-2xl shadow-primary/20 hover:scale-105 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-3"
                 >
                   {isSubmitting ? (
                     <>
